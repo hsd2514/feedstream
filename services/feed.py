@@ -3,7 +3,6 @@ from services.redis import get_redis
 import json
 
 
-#store images in redis
 def store_image(image_id: str, image_url: str,image_tags: list[str]):    
     redis = get_redis()
     if redis is None:
@@ -65,8 +64,66 @@ def update_engagement(image_id: str):
     redis = get_redis()
     if redis is None:
         raise HTTPException(status_code=503, detail="Redis connection failed")
-    like,dislike = get_engagement(image_id)
+    
+    engagement = get_engagement(image_id)
+    if engagement is None:
+        raise HTTPException(status_code=404, detail="Image not found")
+    like , dislike = engagement["likes"], engagement["dislikes"]
     score = (like*2)-(dislike*1)
-    key = f"feed:global:{score}:{image_id}"
-    score = redis.zadd(key, {image_id: score})
+    key = f"feed:global"
+    redis.zadd(key, {image_id: score})
     return score
+
+
+def add_images_tags(image_id: str, tags: list[str]):
+    redis = get_redis()
+    if redis is None:
+        raise HTTPException(status_code=503, detail="Redis connection failed")
+    
+    for tag in tags:
+        key = f"tag:{tag}"
+        redis.sadd(key, image_id)
+    return {"message": "Tags added successfully"}
+
+def get_images_by_tag(tag: str):
+    redis = get_redis()
+    if redis is None:
+        raise HTTPException(status_code=503, detail="Redis connection failed")
+    key = f"tag:{tag}"
+    images = redis.smembers(key)
+    return images
+
+def mark_image_as_seen(session_id: str, image_id: str):
+    redis = get_redis()
+    if redis is None:
+        raise HTTPException(status_code=503, detail="Redis connection failed")
+    
+    ensure_session(session_id)
+    
+    key = f"session:{session_id}:seen_images"
+    added = redis.sadd(key, image_id)
+    
+    return added == 1
+
+
+def ensure_session(session_id: str, ttl_seconds: int = 3600):
+    redis = get_redis()
+    if redis is None:
+        raise HTTPException(status_code=503, detail="Redis connection failed")
+    
+    key_seen = f"session:{session_id}:seen_images"
+    key_tag_scores = f"session:{session_id}:tag_scores"
+    
+    if not redis.exists(key_seen):
+        redis.sadd(key_seen, "__init__")
+        redis.srem(key_seen, "__init__")
+    
+    if not redis.exists(key_tag_scores):
+        redis.hset(key_tag_scores, "__init__", "0")
+        redis.hdel(key_tag_scores, "__init__")
+    
+    redis.expire(key_seen, ttl_seconds)
+    redis.expire(key_tag_scores, ttl_seconds)
+    
+    return True
+    
