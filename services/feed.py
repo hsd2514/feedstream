@@ -91,7 +91,7 @@ def get_images_by_tag(tag: str):
         raise HTTPException(status_code=503, detail="Redis connection failed")
     key = f"tag:{tag}"
     images = redis.smembers(key)
-    return images
+    return list(images)
 
 def mark_image_as_seen(session_id: str, image_id: str):
     redis = get_redis()
@@ -117,13 +117,12 @@ def ensure_session(session_id: str, ttl_seconds: int = 3600):
     if not redis.exists(key_seen):
         redis.sadd(key_seen, "__init__")
         redis.srem(key_seen, "__init__")
+        redis.expire(key_seen, ttl_seconds)
     
     if not redis.exists(key_tag_scores):
         redis.hset(key_tag_scores, "__init__", "0")
         redis.hdel(key_tag_scores, "__init__")
-    
-    redis.expire(key_seen, ttl_seconds)
-    redis.expire(key_tag_scores, ttl_seconds)
+        redis.expire(key_tag_scores, ttl_seconds)
     
     return True
     
@@ -133,7 +132,8 @@ def get_seen_images(session_id: str):
     if redis is None:
         raise HTTPException(status_code=503, detail="Redis connection failed")
     key = f"session:{session_id}:seen_images"
-    return redis.smembers(key)
+    images = redis.smembers(key)
+    return set(images)
 
 def is_image_seen(session_id: str, image_id: str):
     redis = get_redis()
@@ -142,19 +142,20 @@ def is_image_seen(session_id: str, image_id: str):
     key = f"session:{session_id}:seen_images"
     return redis.sismember(key, image_id) == 1
 
-def update_tag_scores(session_id: str, tag, delta: int):
+def update_tag_scores(session_id: str, tag, delta: float):
     redis = get_redis()
     if redis is None:
         raise HTTPException(status_code=503, detail="Redis connection failed")
     key = f"session:{session_id}:tag_scores"
-    return redis.hincrby(key, tag, delta)
+    return redis.hincrbyfloat(key, tag, delta)
 
 def get_tag_scores(session_id: str):
     redis = get_redis()
     if redis is None:
         raise HTTPException(status_code=503, detail="Redis connection failed")
     key = f"session:{session_id}:tag_scores"
-    return redis.hgetall(key)
+    raw_scores = redis.hgetall(key)
+    return {k: float(v) for k, v in raw_scores.items()}
 
 def get_top_global_images(count: int = 10):
     redis = get_redis()
@@ -176,5 +177,5 @@ def get_all_images():
         raise HTTPException(status_code=503, detail="Redis connection failed")
     key = f"feed:global"
     images = redis.zrange(key, 0, -1, withscores=True)
-    return [image[0] for image in images]
+    return [img for img, _ in images]
 

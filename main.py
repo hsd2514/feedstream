@@ -1,11 +1,10 @@
 from fastapi import FastAPI , HTTPException 
 from services.redis import get_redis
+from routes.feed import router as feed_router
 
 app = FastAPI()
 
-
-
-
+app.include_router(feed_router)
 
 def main():
     app.run(host="0.0.0.0", port=8000)
