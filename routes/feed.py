@@ -15,3 +15,5 @@ async def like_image(session_id: str, image_id: str):
 @router.post("/dislike")
 async def dislike_image(session_id: str, image_id: str):
     return dislike_handler(session_id, image_id)
+
+
