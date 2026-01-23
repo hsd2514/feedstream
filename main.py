@@ -1,10 +1,20 @@
 from fastapi import FastAPI , HTTPException 
+from fastapi.middleware.cors import CORSMiddleware
 from services.redis import get_redis
 from routes.feed import router as feed_router
-
+from routes.session import router as session_router
 app = FastAPI()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(feed_router)
+app.include_router(session_router)
 
 def main():
     app.run(host="0.0.0.0", port=8000)

@@ -23,6 +23,7 @@ def get_image(image_id: str):
     if image is None or len(image) == 0:
         return None
     return {
+        "image_id": image_id,
         "image_url": image["image_url"],
         "image_tags": json.loads(image["image_tags"])
     }
@@ -179,3 +180,38 @@ def get_all_images():
     images = redis.zrange(key, 0, -1, withscores=True)
     return [img for img, _ in images]
 
+def get_images_batch(image_ids: list[str]):
+    redis = get_redis()
+    if redis is None:
+        raise HTTPException(status_code=503, detail="Redis connection failed")
+    
+    pipe = redis.pipeline()
+    for image_id in image_ids:
+        pipe.hgetall(f"image:{image_id}")
+    results = pipe.execute()
+    
+    images = {}
+    for image_id, result in zip(image_ids, results):
+        if result and len(result) > 0:
+            images[image_id] = {
+                "image_id": image_id,
+                "image_url": result["image_url"],
+                "image_tags": json.loads(result["image_tags"])
+            }
+    return images
+
+def get_global_scores_batch(image_ids: list[str]):
+    redis = get_redis()
+    if redis is None:
+        raise HTTPException(status_code=503, detail="Redis connection failed")
+    
+    key = f"feed:global"
+    pipe = redis.pipeline()
+    for image_id in image_ids:
+        pipe.zscore(key, image_id)
+    results = pipe.execute()
+    
+    scores = {}
+    for image_id, score in zip(image_ids, results):
+        scores[image_id] = float(score) if score is not None else 0.0
+    return scores
